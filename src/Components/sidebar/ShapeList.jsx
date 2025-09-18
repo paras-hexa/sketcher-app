@@ -4,6 +4,15 @@ import { observer } from "mobx-react-lite";
 import { SketchStore } from "../../stores/sketchstore";
 
 export const ShapeList = observer(() => {
+
+const handleHide = (id)=>{
+  console.log(id);
+  
+  SketchStore.toggleVisibility(id)
+}
+
+
+
   return (
     <div className="shape-list">
       <h3>Shapes</h3>
@@ -16,7 +25,7 @@ export const ShapeList = observer(() => {
           onClick={() => SketchStore.selectShape(shape.id)}
         >
           <span>{shape.type} {shape.id}</span>
-          <button onClick={(e) => {e.stopPropagation(); SketchStore.toggleVisibility(shape.id);}}>
+          <button onClick={() => handleHide(shape.id)}>
             {shape.hidden ? "👁️‍🗨️" : "👁️"}
           </button>
           <button onClick={(e) => {e.stopPropagation(); SketchStore.deleteShape(shape.id);}}>

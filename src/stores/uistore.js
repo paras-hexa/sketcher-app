@@ -19,8 +19,12 @@ class UiStore{
         this.searchQuery = query;
     }
 
-    getactivetool(){
+    get  getactivetool(){
         return this.activeTool
+    }
+
+     get getSearchquery(){
+        return this.searchQuery
     }
 }
 

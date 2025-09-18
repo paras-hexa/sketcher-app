@@ -1,24 +1,9 @@
-// src/Components/canvas/SketchCanvas.jsx
+
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { observer } from "mobx-react-lite";
 import { uiStore } from "../../stores/uistore";
 import { SketchStore } from "../../stores/sketchstore";
-
-/**
- * SketchCanvas
- * - Draws shapes from SketchStore
- * - On user interaction it creates/updates shapes in SketchStore
- * - Uses uiStore.activeTool to decide the drawing behavior
- *
- * NOTE: This uses the exact store methods you provided:
- *    SketchStore.addShape(...)
- *    SketchStore.updateShape(id, props)
- *    SketchStore.selectShape(id)
- *    SketchStore.deleteshape(id)  // not used here but available
- *
- * Polyline: click to add points, double-click to finish.
- */
 
 export const SketchCanvas = observer(() => {
   const mountRef = useRef(null);
@@ -61,7 +46,7 @@ export const SketchCanvas = observer(() => {
       -1000,
       1000
     );
-    camera.position.z = 10;
+    camera.position.z = 100;
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -69,12 +54,6 @@ export const SketchCanvas = observer(() => {
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
-
-    // optional light / helpers (kept subtle)
-    // grid oriented in X-Y plane (visual guidance)
-    const grid = new THREE.GridHelper(Math.max(width, height) * 2, 50, 0xeeeeee, 0xdddddd);
-    grid.rotation.x = Math.PI / 2;
-    scene.add(grid);
 
     // Raycaster for selection
     const raycaster = new THREE.Raycaster();
@@ -119,7 +98,7 @@ export const SketchCanvas = observer(() => {
 
     // Helper: create Three object for a shape
     const createThreeObjectForShape = (s) => {
-      const color = s.color || "#000000";
+      const color = s.color || "#0000ff";
       if (s.type === "line") {
         const pts = [new THREE.Vector3(s.x1 || 0, s.y1 || 0, 0), new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0)];
         const geom = new THREE.BufferGeometry().setFromPoints(pts);
@@ -378,21 +357,7 @@ export const SketchCanvas = observer(() => {
   return (
     <div ref={mountRef} className={`w-full h-full bg-white overflow-hidden`}>
       {/* we render Three canvas into this div */}
-      <div
-        style={{
-          position: "absolute",
-          pointerEvents: "none",
-          left: 12,
-          top: 12,
-          background: "rgba(255,255,255,0.6)",
-          padding: "6px 8px",
-          borderRadius: 6,
-          fontSize: 13,
-          color: "#444",
-        }}
-      >
-        {uiStore.activeTool ? `Tool: ${uiStore.activeTool}` : "Select a tool"}
-      </div>
+     
     </div>
   );
 });

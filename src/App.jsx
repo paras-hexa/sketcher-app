@@ -11,7 +11,7 @@ function App() {
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden m-2">
         {/* Left Panel */}
-        <div className="w-1/5  bg-gray-300 rounded-md p-2 m-2">
+        <div className="w-1/5 bg-gray-300 rounded-md p-2 m-2">
           <ShapeList />
         </div>
 
