@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { observer } from "mobx-react-lite";
@@ -13,12 +12,19 @@ export const SketchCanvas = observer(() => {
   const objectsRef = useRef(new Map()); // map shapeId => threeObject
   const animRef = useRef(null);
 
-  // drawing state refs (mutable, not causing re-renders)
-  const isDrawingRef = useRef(false);
-  const currentIdRef = useRef(null);
-  const polylineModeRef = useRef(false);
+  // drawing state refs
+  const isDrawingRef = useRef(false); // for click-click flow (line/circle/ellipse)
+  const currentToolRef = useRef(null); // current tool name at start of draw
+  const startPointRef = useRef(null); // start/center for non-polyline shapes
+  const tempObjectRef = useRef(null); // temporary preview (Line or Mesh) for non-polyline
 
-  // helper: convert screen (clientX/clientY) to world coordinates (camera centered at 0,0)
+  // polyline temp visuals (NOT stored in SketchStore until finish)
+  const polylineModeRef = useRef(false);
+  const tempPolylinePointsRef = useRef([]); // array of {x,y} for the temp polyline
+  const tempPolylineRef = useRef(null); // line showing committed temp polyline segments
+  const previewSegmentRef = useRef(null); // dashed segment from last fixed point -> mouse
+
+  // convert screen coords to world coords (for ortho camera centered at 0,0)
   const screenToWorld = (clientX, clientY, mount) => {
     const rect = mount.getBoundingClientRect();
     const x = clientX - rect.left - rect.width / 2;
@@ -30,7 +36,7 @@ export const SketchCanvas = observer(() => {
     const mount = mountRef.current;
     if (!mount) return;
 
-    // Initialize scene, orthographic camera centered at 0,0 (good for 2D)
+    // --- scene / camera / renderer ---
     const width = mount.clientWidth;
     const height = mount.clientHeight;
 
@@ -55,33 +61,105 @@ export const SketchCanvas = observer(() => {
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Raycaster for selection
+    // raycaster for selection
     const raycaster = new THREE.Raycaster();
     const mouseNDC = new THREE.Vector2();
 
-    // Sync shapes -> three objects
+    // --- helpers: create / update objects for shapes (from store) ---
+    const createThreeObjectForShape = (s) => {
+      const color = s.color || "#000000";
+
+      if (s.type === "line") {
+        const pts = [
+          new THREE.Vector3(s.x1 || 0, s.y1 || 0, 0),
+          new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0),
+        ];
+        const geom = new THREE.BufferGeometry().setFromPoints(pts);
+        const mat = new THREE.LineBasicMaterial({ color });
+        return new THREE.Line(geom, mat);
+      }
+
+      if (s.type === "polyline") {
+        const pts = (s.points || []).map((p) => new THREE.Vector3(p.x || 0, p.y || 0, 0));
+        const geom = new THREE.BufferGeometry().setFromPoints(pts);
+        const mat = new THREE.LineBasicMaterial({ color });
+        return new THREE.Line(geom, mat);
+      }
+
+      if (s.type === "circle") {
+        const geom = new THREE.CircleGeometry(1, 64);
+        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(s.cx || 0, s.cy || 0, 0);
+        mesh.scale.set(s.r || 0, s.r || 0, 1);
+        return mesh;
+      }
+
+      if (s.type === "ellipse") {
+        const geom = new THREE.CircleGeometry(1, 64);
+        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(s.cx || 0, s.cy || 0, 0);
+        mesh.scale.set(s.rx || 0, s.ry || 0, 1);
+        return mesh;
+      }
+
+      return null;
+    };
+
+    const updateThreeObjectForShape = (obj, s) => {
+      if (!obj) return;
+      obj.visible = !s.hidden;
+
+      if (s.type === "line" && obj.type === "Line") {
+        obj.geometry.setFromPoints([
+          new THREE.Vector3(s.x1 || 0, s.y1 || 0, 0),
+          new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0),
+        ]);
+        obj.material.color.set(s.color || "#000000");
+        return;
+      }
+
+      if (s.type === "polyline" && obj.type === "Line") {
+        const pts = (s.points || []).map((p) => new THREE.Vector3(p.x || 0, p.y || 0, 0));
+        obj.geometry.setFromPoints(pts);
+        obj.material.color.set(s.color || "#000000");
+        return;
+      }
+
+      if ((s.type === "circle" || s.type === "ellipse") && obj.isMesh) {
+        obj.position.set(s.cx || 0, s.cy || 0, 0);
+        if (s.type === "circle") {
+          obj.scale.set(s.r || 0, s.r || 0, 1);
+        } else {
+          obj.scale.set(s.rx || 0, s.ry || 0, 1);
+        }
+        obj.material.color.set(s.color || "#000000");
+        return;
+      }
+    };
+
+    // sync shapes -> three objects (store is single source for completed shapes)
     const syncObjects = () => {
       const storeShapes = SketchStore.shapes || [];
       const existingIds = new Set(storeShapes.map((s) => s.id));
 
-      // remove objects that no longer exist in store
+      // remove deleted shapes
       for (const [id, obj] of Array.from(objectsRef.current.entries())) {
         if (!existingIds.has(id)) {
           scene.remove(obj);
           if (obj.geometry) obj.geometry.dispose();
           if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach((m) => m.dispose());
-            } else obj.material.dispose();
+            if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+            else obj.material.dispose();
           }
           objectsRef.current.delete(id);
         }
       }
 
-      // create or update objects for each shape
+      // create or update
       for (const s of storeShapes) {
         if (!objectsRef.current.has(s.id)) {
-          // create
           const obj = createThreeObjectForShape(s);
           if (obj) {
             obj.userData = { id: s.id, type: s.type };
@@ -89,96 +167,13 @@ export const SketchCanvas = observer(() => {
             scene.add(obj);
           }
         } else {
-          // update existing object geometry / color / visibility
           const obj = objectsRef.current.get(s.id);
           updateThreeObjectForShape(obj, s);
         }
       }
     };
 
-    // Helper: create Three object for a shape
-    const createThreeObjectForShape = (s) => {
-      const color = s.color || "#0000ff";
-      if (s.type === "line") {
-        const pts = [new THREE.Vector3(s.x1 || 0, s.y1 || 0, 0), new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0)];
-        const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color });
-        return new THREE.Line(geom, mat);
-      }
-      if (s.type === "circle") {
-        const r = s.r || 0;
-        const curve = new THREE.EllipseCurve(0, 0, r, r, 0, Math.PI * 2, false, 0);
-        const pts = curve.getPoints(64).map((p) => new THREE.Vector3(p.x + (s.cx || 0), p.y + (s.cy || 0), 0));
-        const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color });
-        return new THREE.LineLoop(geom, mat);
-      }
-      if (s.type === "ellipse") {
-        const rx = s.rx || 0;
-        const ry = s.ry || 0;
-        const curve = new THREE.EllipseCurve(0, 0, rx, ry, 0, Math.PI * 2, false, 0);
-        const pts = curve.getPoints(64).map((p) => new THREE.Vector3(p.x + (s.cx || 0), p.y + (s.cy || 0), 0));
-        const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color });
-        return new THREE.LineLoop(geom, mat);
-      }
-      if (s.type === "polyline") {
-        const pts = (s.points || []).map((p) => new THREE.Vector3(p.x || 0, p.y || 0, 0));
-        const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color });
-        return new THREE.Line(geom, mat);
-      }
-      return null;
-    };
-
-    // Helper: update existing object's geometry/color/visible based on shape
-    const updateThreeObjectForShape = (obj, s) => {
-      if (!obj) return;
-      obj.visible = s.hidden ? false : true;
-
-      if (s.type === "line" && obj.type === "Line") {
-        const positions = new Float32Array([
-          s.x1 || 0, s.y1 || 0, 0,
-          s.x2 || 0, s.y2 || 0, 0
-        ]);
-        if (!obj.geometry || obj.geometry.attributes.position.count !== 2) {
-          obj.geometry.dispose();
-          obj.geometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(s.x1 || 0, s.y1 || 0, 0),
-            new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0)
-          ]);
-        } else {
-          obj.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-          obj.geometry.attributes.position.needsUpdate = true;
-        }
-        if (obj.material) obj.material.color.set(s.color || "#000000");
-      }
-
-      if (s.type === "circle" && (obj.type === "Line" || obj.type === "LineLoop")) {
-        const r = s.r || 0;
-        const curve = new THREE.EllipseCurve(0,0,r,r,0,Math.PI*2,false,0);
-        const pts = curve.getPoints(64).map((p) => new THREE.Vector3(p.x + (s.cx || 0), p.y + (s.cy || 0), 0));
-        obj.geometry.setFromPoints(pts);
-        if (obj.material) obj.material.color.set(s.color || "#000000");
-      }
-
-      if (s.type === "ellipse" && (obj.type === "Line" || obj.type === "LineLoop")) {
-        const rx = s.rx || 0;
-        const ry = s.ry || 0;
-        const curve = new THREE.EllipseCurve(0,0,rx,ry,0,Math.PI*2,false,0);
-        const pts = curve.getPoints(64).map((p) => new THREE.Vector3(p.x + (s.cx || 0), p.y + (s.cy || 0), 0));
-        obj.geometry.setFromPoints(pts);
-        if (obj.material) obj.material.color.set(s.color || "#000000");
-      }
-
-      if (s.type === "polyline" && obj.type === "Line") {
-        const pts = (s.points || []).map((p) => new THREE.Vector3(p.x || 0, p.y || 0, 0));
-        obj.geometry.setFromPoints(pts);
-        if (obj.material) obj.material.color.set(s.color || "#000000");
-      }
-    };
-
-    // animation loop - sync + render
+    // animation loop
     const animate = () => {
       syncObjects();
       renderer.render(scene, camera);
@@ -186,15 +181,13 @@ export const SketchCanvas = observer(() => {
     };
     animate();
 
-    // ----- Pointer event handlers -----
+    // --- pointer logic (non-store previews, store only on finalize) ---
     const onPointerDown = (ev) => {
       ev.preventDefault();
       const rect = mount.getBoundingClientRect();
       const { x, y } = screenToWorld(ev.clientX, ev.clientY, mount);
 
-      // selection: if clicked an existing object and not in the middle of a polyline add flow,
-      // select it and do not start drawing
-      // compute intersects
+      // selection: if clicked existing object and not mid-draw, select and don't start drawing
       mouseNDC.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
       mouseNDC.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouseNDC, camera);
@@ -210,109 +203,226 @@ export const SketchCanvas = observer(() => {
         }
       }
 
-      // if no active tool -> nothing to do
-      if (!uiStore.activeTool) return;
-
-      // DRAW START logic
-      // For polyline: if already in polyline mode add a point; else start a new polyline
       const tool = uiStore.activeTool;
+      if (!tool) return;
+
+      // ---------- POLYLINE ----------
       if (tool === "polyline") {
+        // Start polyline build mode if not already
         if (!polylineModeRef.current) {
-          // start polyline
-          const id = Date.now().toString();
-          currentIdRef.current = id;
           polylineModeRef.current = true;
-          // create with two same points first (last one is preview)
-          SketchStore.addShape({ id, type: "polyline", points: [{ x, y }, { x, y }], color: "#000000" });
-          isDrawingRef.current = false; // we'll treat polyline specially
+          tempPolylinePointsRef.current = [{ x, y }]; // first fixed point
+          // create temp polyline (visual) with a duplicated point so geometry has 2 points
+          const pts = [new THREE.Vector3(x, y, 0), new THREE.Vector3(x, y, 0)];
+          const geom = new THREE.BufferGeometry().setFromPoints(pts);
+          const mat = new THREE.LineBasicMaterial({ color: "#000000" });
+          tempPolylineRef.current = new THREE.Line(geom, mat);
+          scene.add(tempPolylineRef.current);
         } else {
-          // add a point to the existing polyline
-          const id = currentIdRef.current;
-          const shape = SketchStore.shapes.find((s) => s.id === id);
-          if (shape) {
-            const pts = [...(shape.points || []), { x, y }];
-            SketchStore.updateShape(id, { points: pts });
+          // Add a committed point to temp polyline (not in store yet)
+          const pts = tempPolylinePointsRef.current;
+          // push clicked point as new fixed vertex
+          pts.push({ x, y });
+          // update temp polyline geometry to show committed points
+          const vpts = pts.map((p) => new THREE.Vector3(p.x, p.y, 0));
+          tempPolylineRef.current.geometry.dispose();
+          tempPolylineRef.current.geometry = new THREE.BufferGeometry().setFromPoints(vpts);
+
+          // remove preview segment (last->mouse) now that we fixed the click
+          if (previewSegmentRef.current) {
+            scene.remove(previewSegmentRef.current);
+            previewSegmentRef.current.geometry.dispose();
+            previewSegmentRef.current.material.dispose();
+            previewSegmentRef.current = null;
           }
         }
         return;
       }
 
-      // Non-polyline tools: start immediate drawing (click+drag)
-      isDrawingRef.current = true;
-      const id = Date.now().toString();
-      currentIdRef.current = id;
+      // ---------- NON-POLYLINE (line / circle / ellipse) ----------
+      // Click-click flow: first click creates temporary preview; second click finalizes (adds to store)
+      if (!isDrawingRef.current) {
+        // start drawing
+        isDrawingRef.current = true;
+        currentToolRef.current = tool;
+        startPointRef.current = { x, y };
 
-      if (tool === "line") {
-        SketchStore.addShape({ id, type: "line", x1: x, y1: y, x2: x, y2: y, color: "#000000" });
-      } else if (tool === "circle") {
-        SketchStore.addShape({ id, type: "circle", cx: x, cy: y, r: 0, color: "#000000" });
-      } else if (tool === "ellipse") {
-        SketchStore.addShape({ id, type: "ellipse", cx: x, cy: y, rx: 0, ry: 0, color: "#000000" });
+        // create temp preview object (not in store)
+        if (tool === "line") {
+          const pts = [new THREE.Vector3(x, y, 0), new THREE.Vector3(x, y, 0)];
+          const geom = new THREE.BufferGeometry().setFromPoints(pts);
+          const mat = new THREE.LineBasicMaterial({ color: "#000000" });
+          tempObjectRef.current = new THREE.Line(geom, mat);
+          scene.add(tempObjectRef.current);
+        } else if (tool === "circle") {
+          const geom = new THREE.CircleGeometry(1, 64);
+          const mat = new THREE.MeshBasicMaterial({ color: "#000000", side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.position.set(x, y, 0);
+          mesh.scale.set(0.0001, 0.0001, 1); // tiny to start
+          tempObjectRef.current = mesh;
+          scene.add(tempObjectRef.current);
+        } else if (tool === "ellipse") {
+          const geom = new THREE.CircleGeometry(1, 64);
+          const mat = new THREE.MeshBasicMaterial({ color: "#000000", side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.position.set(x, y, 0);
+          mesh.scale.set(0.0001, 0.0001, 1);
+          tempObjectRef.current = mesh;
+          scene.add(tempObjectRef.current);
+        }
+      } else {
+        // second click -> finalize: create shape in SketchStore and remove preview
+        const start = startPointRef.current;
+        // remove temporary preview from scene first
+        if (tempObjectRef.current) {
+          scene.remove(tempObjectRef.current);
+          if (tempObjectRef.current.geometry) tempObjectRef.current.geometry.dispose();
+          if (tempObjectRef.current.material) tempObjectRef.current.material.dispose();
+          tempObjectRef.current = null;
+        }
+
+        // create store shape (completed)
+        const id = Date.now().toString();
+        if (currentToolRef.current === "line") {
+          SketchStore.addShape({
+            id,
+            type: "line",
+            x1: start.x,
+            y1: start.y,
+            x2: x,
+            y2: y,
+            color: "#000000",
+          });
+        } else if (currentToolRef.current === "circle") {
+          const r = Math.hypot(x - start.x, y - start.y);
+          SketchStore.addShape({
+            id,
+            type: "circle",
+            cx: start.x,
+            cy: start.y,
+            r,
+            color: "#000000",
+          });
+        } else if (currentToolRef.current === "ellipse") {
+          const rx = Math.abs(x - start.x);
+          const ry = Math.abs(y - start.y);
+          SketchStore.addShape({
+            id,
+            type: "ellipse",
+            cx: start.x,
+            cy: start.y,
+            rx,
+            ry,
+            color: "#000000",
+          });
+        }
+
+        // reset drawing state
+        isDrawingRef.current = false;
+        currentToolRef.current = null;
+        startPointRef.current = null;
       }
     };
 
     const onPointerMove = (ev) => {
+      // update previews: either click-click preview (non-polyline) or polyline preview segment
       if (!isDrawingRef.current && !polylineModeRef.current) return;
       ev.preventDefault();
-      const mount = mountRef.current;
-      if (!mount) return;
       const { x, y } = screenToWorld(ev.clientX, ev.clientY, mount);
-      const id = currentIdRef.current;
-      if (!id) return;
-      const shape = SketchStore.shapes.find((s) => s.id === id);
-      if (!shape) return;
 
-      if (shape.type === "line") {
-        SketchStore.updateShape(id, { x2: x, y2: y });
-      } else if (shape.type === "circle") {
-        const dx = x - shape.cx;
-        const dy = y - shape.cy;
-        const r = Math.sqrt(dx * dx + dy * dy);
-        SketchStore.updateShape(id, { r });
-      } else if (shape.type === "ellipse") {
-        const rx = Math.abs(x - shape.cx);
-        const ry = Math.abs(y - shape.cy);
-        SketchStore.updateShape(id, { rx, ry });
-      } else if (shape.type === "polyline") {
-        // update preview last point to current mouse
-        const pts = [...(shape.points || [])];
-        if (pts.length > 0) {
-          pts[pts.length - 1] = { x, y };
-          SketchStore.updateShape(id, { points: pts });
-        }
-      }
-    };
-
-    const onPointerUp = (ev) => {
-      // finish for non-polyline
-      if (isDrawingRef.current) {
-        isDrawingRef.current = false;
-        currentIdRef.current = null;
-      }
-      // for polyline we don't end on pointerup (double-click ends)
-    };
-
-    const onDoubleClick = (ev) => {
-      // finish polyline on double click
+      // POLYLINE preview: dashed segment from last fixed point -> mouse
       if (polylineModeRef.current && uiStore.activeTool === "polyline") {
-        const id = currentIdRef.current;
-        if (id) {
-          // if last point equals previous (preview), it's already placed; finish
-          polylineModeRef.current = false;
-          currentIdRef.current = null;
-          isDrawingRef.current = false;
+        const pts = tempPolylinePointsRef.current;
+        if (!pts || pts.length === 0) return;
+
+        const last = pts[pts.length - 1];
+        const geom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(last.x, last.y, 0),
+          new THREE.Vector3(x, y, 0),
+        ]);
+
+        if (previewSegmentRef.current) {
+          previewSegmentRef.current.geometry.dispose();
+          previewSegmentRef.current.geometry = geom;
+        } else {
+          const mat = new THREE.LineDashedMaterial({
+            color: 0x0000ff,
+            dashSize: 6,
+            gapSize: 3,
+          });
+          const seg = new THREE.Line(geom, mat);
+          seg.computeLineDistances();
+          scene.add(seg);
+          previewSegmentRef.current = seg;
+        }
+        return;
+      }
+
+      // NON-POLYLINE preview: update tempObjectRef using startPointRef
+      if (isDrawingRef.current && tempObjectRef.current) {
+        const start = startPointRef.current;
+        const tool = currentToolRef.current;
+        if (tool === "line") {
+          tempObjectRef.current.geometry.setFromPoints([
+            new THREE.Vector3(start.x, start.y, 0),
+            new THREE.Vector3(x, y, 0),
+          ]);
+        } else if (tool === "circle") {
+          const r = Math.hypot(x - start.x, y - start.y);
+          tempObjectRef.current.scale.set(r, r, 1);
+        } else if (tool === "ellipse") {
+          const rx = Math.abs(x - start.x);
+          const ry = Math.abs(y - start.y);
+          tempObjectRef.current.scale.set(rx, ry, 1);
         }
       }
     };
 
-    // attach events to renderer.domElement to respect canvas area
-    renderer.domElement.style.touchAction = "none"; // avoid browser gestures
+    // finalize polyline on double click: add full polyline to store and remove temp visuals
+    const onDoubleClick = (ev) => {
+      if (!polylineModeRef.current || uiStore.activeTool !== "polyline") return;
+
+      // If there is a preview segment, remove it
+      if (previewSegmentRef.current) {
+        scene.remove(previewSegmentRef.current);
+        previewSegmentRef.current.geometry.dispose();
+        previewSegmentRef.current.material.dispose();
+        previewSegmentRef.current = null;
+      }
+
+      // tempPolylinePointsRef currently holds committed vertices (no preview)
+      const pts = tempPolylinePointsRef.current.slice();
+      if (pts.length >= 2) {
+        // add to SketchStore as a single polyline shape
+        const id = Date.now().toString();
+        SketchStore.addShape({
+          id,
+          type: "polyline",
+          points: pts,
+          color: "#000000",
+        });
+      }
+
+      // remove temporary polyline visual
+      if (tempPolylineRef.current) {
+        scene.remove(tempPolylineRef.current);
+        tempPolylineRef.current.geometry.dispose();
+        tempPolylineRef.current.material.dispose();
+        tempPolylineRef.current = null;
+      }
+
+      tempPolylinePointsRef.current = [];
+      polylineModeRef.current = false;
+    };
+
+    // attach events
+    renderer.domElement.style.touchAction = "none";
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("dblclick", onDoubleClick);
 
-    // window resize support
+    // resize
     const handleResize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
@@ -330,11 +440,10 @@ export const SketchCanvas = observer(() => {
       cancelAnimationFrame(animRef.current);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", onDoubleClick);
       window.removeEventListener("resize", handleResize);
 
-      // dispose objects
+      // dispose created objects from store sync
       for (const obj of objectsRef.current.values()) {
         scene.remove(obj);
         if (obj.geometry) obj.geometry.dispose();
@@ -345,21 +454,34 @@ export const SketchCanvas = observer(() => {
       }
       objectsRef.current.clear();
 
-      // renderer dispose & remove canvas
+      // dispose any temporary visuals
+      if (tempObjectRef.current) {
+        scene.remove(tempObjectRef.current);
+        if (tempObjectRef.current.geometry) tempObjectRef.current.geometry.dispose();
+        if (tempObjectRef.current.material) tempObjectRef.current.material.dispose();
+        tempObjectRef.current = null;
+      }
+      if (tempPolylineRef.current) {
+        scene.remove(tempPolylineRef.current);
+        tempPolylineRef.current.geometry.dispose();
+        tempPolylineRef.current.material.dispose();
+        tempPolylineRef.current = null;
+      }
+      if (previewSegmentRef.current) {
+        scene.remove(previewSegmentRef.current);
+        previewSegmentRef.current.geometry.dispose();
+        previewSegmentRef.current.material.dispose();
+        previewSegmentRef.current = null;
+      }
+
       renderer.dispose();
       if (mount && renderer.domElement && mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, []); // run once on mount
+  }, []);
 
-  // UI: show helpful hint when no tool selected
-  return (
-    <div ref={mountRef} className={`w-full h-full bg-white overflow-hidden`}>
-      {/* we render Three canvas into this div */}
-     
-    </div>
-  );
+  return <div ref={mountRef} className={`w-full h-full bg-white overflow-hidden`} />;
 });
 
 

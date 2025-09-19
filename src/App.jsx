@@ -9,9 +9,9 @@ function App() {
       <div className="w-screen h-screen flex flex-col bg-white ">
   
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden m-2">
+      <div className="flex flex-1 overflow-auto m-2">
         {/* Left Panel */}
-        <div className="w-1/5 bg-gray-300 rounded-md p-2 m-2">
+        <div className="w-1/5 bg-gray-300 rounded-md p-2 m-2 overflow-y-scroll">
           <ShapeList />
         </div>
 
@@ -22,7 +22,7 @@ function App() {
         </div>
 
         {/* Right Panel */}
-        <div className="w-1/5  bg-gray-300 rounded-md p-2 m-2">
+        <div className="w-1/5  bg-gray-300 rounded-md p-2 m-2 overflow-y-scroll">
           <PropertiesPanel />
         </div>
       </div>
