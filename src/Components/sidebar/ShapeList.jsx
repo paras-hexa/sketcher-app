@@ -1,4 +1,3 @@
-// src/Components/sidebar/ShapeList.jsx
 import React, { useState } from "react";
 import { observer } from "mobx-react-lite";
 import { SketchStore } from "../../stores/sketchstore";
@@ -8,32 +7,45 @@ import {
   Circle,
   CircleDashed,
   Route,
-   Eye,
-   EyeClosed,
-   Trash ,
-   ChevronDown,
-   ChevronRight,
-   ChevronLeft,
-   Delete
-} from "lucide-react"; // Shape type → icon map
-import { Line } from "three";
-
-
-
+  Eye,
+  EyeClosed,
+  Trash,
+  ChevronDown,
+  ChevronRight,
+  Search
+} from "lucide-react";
 
 export const ShapeList = observer(() => {
   const [collapsed, setCollapsed] = useState(false);
 
-  //icon
+  // Icons for each shape type
   const shapeIcons = {
-  line:<PenLine size={20}></PenLine>,
-  circle: <Circle size={20}></Circle>,
-  ellipse: <CircleDashed size={20}></CircleDashed>,
-  polyline: <Route size={20}></Route>,
-};
-  // Filter by search
-  const filteredShapes = SketchStore.shapes.filter((shape) =>
-    shape.type.toLowerCase().includes(uiStore.searchQuery.toLowerCase())
+    line: <PenLine size={18} />,
+    circle: <Circle size={18} />,
+    ellipse: <CircleDashed size={18} />,
+    polyline: <Route size={18} />,
+  };
+  
+  console.log("shape store : " , SketchStore.shapes);
+  
+  // Count shapes per type to generate Line 1, Line 2 etc.
+  const typeCounters = {};
+  const namedShapes = SketchStore.shapes.map((shape) => {
+    if (!typeCounters[shape.type]) typeCounters[shape.type] = 1;
+    else typeCounters[shape.type] += 1;
+    return {
+      ...shape,
+      displayName:
+        shape.type.charAt(0).toUpperCase() +
+        shape.type.slice(1) +
+        " " +
+        typeCounters[shape.type],
+    };
+  });
+
+  // Filter with search
+  const filteredShapes = namedShapes.filter((shape) =>
+    shape.displayName.toLowerCase().includes(uiStore.searchQuery.toLowerCase())
   );
 
   const handleHide = (id) => {
@@ -41,26 +53,30 @@ export const ShapeList = observer(() => {
   };
 
   return (
-    <div className="shape-list p-2 bg-gray-100 h-full flex flex-col">
-      {/* 🔍 Search bar */}
-      <input
-        type="text"
-        placeholder="Search..."
-        className="mb-2 p-1 border rounded"
-        value={uiStore.getSearchquery}
-        onChange={(e) => uiStore.setSearchquery(e.target.value)}
-      />
+    <div className="shape-list p-2 bg-transparent h-full flex flex-col">
+    
+      <div className="relative mb-2">
+        <Search size={16} className="absolute left-2 top-2 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search..."
+          className="pl-7 pr-2 py-1 w-full border rounded text-sm"
+          value={uiStore.getSearchquery}
+          onChange={(e) => uiStore.setSearchquery(e.target.value)}
+        />
+      </div>
 
-     
-     
+      {/* Folder header */}
       <div className="folder">
         <div
-          className="folder-header flex justify-between items-center cursor-pointer font-semibold"
+          className="folder-header flex items-center gap-1 cursor-pointer font-semibold"
           onClick={() => setCollapsed(!collapsed)}
         >
-          <span>{collapsed ? <ChevronRight size={20}/> : <ChevronDown size={20}/>} My file 1</span>
+          {collapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+          <span>My file 1</span>
         </div>
 
+        {/* Shapes */}
         {!collapsed && (
           <div className="ml-4 mt-2">
             {filteredShapes.length === 0 && (
@@ -76,16 +92,13 @@ export const ShapeList = observer(() => {
                 }`}
                 onClick={() => SketchStore.selectShape(shape.id)}
               >
-                {/* Icon + Name */}
-                
+                {/* Icon + Display Name */}
                 <div className="flex items-center gap-2">
-                  <span>{ shapeIcons[shape.type] }</span>
-                  <span>
-                    {shape.type} {shape.id}
-                  </span>
+                  <span>{shapeIcons[shape.type]}</span>
+                  <span>{shape.displayName}</span>
                 </div>
 
-                {/* Buttons */}
+                {/* Action buttons */}
                 <div className="flex gap-1">
                   <button
                     onClick={(e) => {
@@ -93,7 +106,7 @@ export const ShapeList = observer(() => {
                       handleHide(shape.id);
                     }}
                   >
-                    {shape.hidden ? <Eye size={20}/>: <EyeClosed size={20}/>}
+                    {shape.hidden ? <Eye size={18} /> : <EyeClosed size={18} />}
                   </button>
                   <button
                     onClick={(e) => {
@@ -101,7 +114,7 @@ export const ShapeList = observer(() => {
                       SketchStore.deleteShape(shape.id);
                     }}
                   >
-                    <Trash size={20}/>
+                    <Trash size={18} />
                   </button>
                 </div>
               </div>

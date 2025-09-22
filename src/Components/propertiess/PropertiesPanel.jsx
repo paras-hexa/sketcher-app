@@ -1,174 +1,251 @@
-// src/Components/properties/PropertiesPanel.jsx
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { observer } from "mobx-react-lite";
 import { SketchStore } from "../../stores/sketchstore";
-
+import {Eye,EyeClosed,Trash,RefreshCcw} from  'lucide-react'
 export const PropertiesPanel = observer(() => {
   const shape = SketchStore.selectedShape;
 
-  if (!shape) return <div className="p-4 text-gray-500">Select a shape</div>;
+  // Local editable state
+  const [localShape, setLocalShape] = useState(null);
+
+  useEffect(() => {
+    if (shape) {
+      setLocalShape({ ...shape });
+    } else {
+      setLocalShape(null);
+    }
+  }, [shape]);
+
+  if (!shape || !localShape) {
+    return <div className="p-4 text-gray-500">Select a shape</div>;
+  }
 
   const handleChange = (field, value) => {
-    SketchStore.updateShape(shape.id, { [field]: value });
+    setLocalShape((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleUpdate = () => {
+    SketchStore.updateShape(shape.id, localShape);
   };
 
   return (
-    <div className="p-4 border-l w-64 bg-white flex flex-col gap-4">
-      <h3 className="font-semibold text-lg border-b pb-1">
-        {shape.type} Properties
+    <div className="p-4  w-72 bg-transparent flex flex-col gap-4">
+      {/* Title */}
+      <h3 className="font-semibold text-lg border-b pb-2">
+        {localShape.displayName || `${localShape.type} ${localShape.id}`}
       </h3>
 
-      {/* Position Section */}
-      {(shape.type === "line" ||
-        shape.type === "circle" ||
-        shape.type === "ellipse") && (
-        <div>
-          <h4 className="font-medium mb-1">Position</h4>
-          {shape.type === "line" ? (
-            <div className="space-y-2">
-              <div>
-                <label className="text-sm">Start (x,y,z)</label>
-                <div className="flex gap-1">
-                  <input type="number" value={shape.x1}
-                    onChange={(e) => handleChange("x1", parseFloat(e.target.value))}
-                    className="w-16 border p-1"
-                  />
-                  <input type="number" value={shape.y1}
-                    onChange={(e) => handleChange("y1", parseFloat(e.target.value))}
-                    className="w-16 border p-1"
-                  />
-                  <input type="number" value={shape.z1 || 0}
-                    onChange={(e) => handleChange("z1", parseFloat(e.target.value))}
-                    className="w-16 border p-1"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm">End (x,y,z)</label>
-                <div className="flex gap-1">
-                  <input type="number" value={shape.x2}
-                    onChange={(e) => handleChange("x2", parseFloat(e.target.value))}
-                    className="w-16 border p-1"
-                  />
-                  <input type="number" value={shape.y2}
-                    onChange={(e) => handleChange("y2", parseFloat(e.target.value))}
-                    className="w-16 border p-1"
-                  />
-                  <input type="number" value={shape.z2 || 0}
-                    onChange={(e) => handleChange("z2", parseFloat(e.target.value))}
-                    className="w-16 border p-1"
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-1">
-              <input type="number" value={shape.cx}
-                onChange={(e) => handleChange("cx", parseFloat(e.target.value))}
-                className="w-16 border p-1"
-              />
-              <input type="number" value={shape.cy}
-                onChange={(e) => handleChange("cy", parseFloat(e.target.value))}
-                className="w-16 border p-1"
-              />
-              {shape.cz !== undefined && (
-                <input type="number" value={shape.cz}
-                  onChange={(e) => handleChange("cz", parseFloat(e.target.value))}
-                  className="w-16 border p-1"
+      {/* LINE */}
+      {localShape.type === "line" && (
+        <>
+          <div>
+            <h4 className="font-medium mb-2">Starting Point</h4>
+            {["x1", "y1", "z1"].map((axis) => (
+              <label key={axis} className="flex justify-between mb-1 text-sm">
+                {axis}:
+                <input
+                  type="number"
+                  value={localShape[axis]}
+                  onChange={(e) =>
+                    handleChange(axis, parseFloat(e.target.value))
+                  }
+                  className="border p-1 w-40"
                 />
-              )}
-            </div>
-          )}
-        </div>
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <h4 className="font-medium mb-2">Ending Point</h4>
+            {["x2", "y2", "z2"].map((axis) => (
+              <label key={axis} className="flex justify-between mb-1 text-sm">
+                {axis}:
+                <input
+                  type="number"
+                  value={localShape[axis]}
+                  onChange={(e) =>
+                    handleChange(axis, parseFloat(e.target.value))
+                  }
+                  className="border p-1 w-40"
+                />
+              </label>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* Size / Radius */}
-      {shape.type === "circle" && (
-        <div>
-          <h4 className="font-medium mb-1">Radius</h4>
-          <input
-            type="number"
-            value={shape.r}
-            onChange={(e) => handleChange("r", parseFloat(e.target.value))}
-            className="w-full border p-1"
-          />
-        </div>
-      )}
-      {shape.type === "ellipse" && (
-        <div>
-          <h4 className="font-medium mb-1">Radii</h4>
-          <div className="flex gap-2">
-            <input type="number" value={shape.rx}
-              onChange={(e) => handleChange("rx", parseFloat(e.target.value))}
-              className="w-20 border p-1"
-            />
-            <input type="number" value={shape.ry}
-              onChange={(e) => handleChange("ry", parseFloat(e.target.value))}
-              className="w-20 border p-1"
+      {/* CIRCLE */}
+      {localShape.type === "circle" && (
+        <>
+          <div>
+            <h4 className="font-medium mb-2">Center Point</h4>
+            {["cx", "cy", "cz"].map((axis) => (
+              <label key={axis} className="flex justify-between mb-1 text-sm">
+                {axis}:
+                <input
+                  type="number"
+                  value={localShape[axis] || 0}
+                  onChange={(e) =>
+                    handleChange(axis, parseFloat(e.target.value))
+                  }
+                  className="border p-1 w-40"
+                />
+              </label>
+            ))}
+          </div>
+          <div>
+            <h4 className="font-medium mb-2">Radius</h4>
+            <input
+              type="number"
+              value={localShape.r}
+              onChange={(e) => handleChange("r", parseFloat(e.target.value))}
+              className="border p-1 w-full"
             />
           </div>
-        </div>
+        </>
       )}
 
-      {/* Polyline Points */}
-      {shape.type === "polyline" && (
+      {/* ELLIPSE */}
+      {localShape.type === "ellipse" && (
+        <>
+          <div>
+            <h4 className="font-medium mb-2">Center Point</h4>
+            {["cx", "cy"].map((axis) => (
+              <label key={axis} className="flex justify-between mb-1 text-sm">
+                {axis}:
+                <input
+                  type="number"
+                  value={localShape[axis]}
+                  onChange={(e) =>
+                    handleChange(axis, parseFloat(e.target.value))
+                  }
+                  className="border p-1 w-40"
+                />
+              </label>
+            ))}
+          </div>
+          <div>
+            <h4 className="font-medium mb-2">Radius</h4>
+            <label className="flex justify-between mb-1 text-sm">
+              rx:
+              <input
+                type="number"
+                value={localShape.rx}
+                onChange={(e) =>
+                  handleChange("rx", parseFloat(e.target.value))
+                }
+                className="border p-1 w-40"
+              />
+            </label>
+            <label className="flex justify-between mb-1 text-sm">
+              ry:
+              <input
+                type="number"
+                value={localShape.ry}
+                onChange={(e) =>
+                  handleChange("ry", parseFloat(e.target.value))
+                }
+                className="border p-1 w-40"
+              />
+            </label>
+          </div>
+        </>
+      )}
+
+      {/* POLYLINE */}
+      {localShape.type === "polyline" && (
         <div>
-          <h4 className="font-medium mb-1">Points</h4>
-          <div className="space-y-1">
-            {shape.points.map((pt, idx) => (
-              <div key={idx} className="flex gap-1">
+          <h4 className="font-medium mb-2">Points</h4>
+          {localShape.points.map((pt, idx) => (
+            <div key={idx} className="mb-2 p-2  rounded">
+              <p className="text-sm font-medium mb-1">Point {idx + 1}</p>
+              <div className="flex gap-2">
+                x :
                 <input
                   type="number"
                   value={pt.x}
                   onChange={(e) => {
-                    const newPoints = [...shape.points];
+                    const newPoints = [...localShape.points];
                     newPoints[idx].x = parseFloat(e.target.value);
                     handleChange("points", newPoints);
                   }}
-                  className="w-20 border p-1"
+                  className="border p-1 w-20"
                 />
+                y :
                 <input
                   type="number"
                   value={pt.y}
                   onChange={(e) => {
-                    const newPoints = [...shape.points];
+                    const newPoints = [...localShape.points];
                     newPoints[idx].y = parseFloat(e.target.value);
                     handleChange("points", newPoints);
                   }}
-                  className="w-20 border p-1"
+                  className="border p-1 w-20"
                 />
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Color */}
+      {/* Update Button */}
+      <button
+        className="border rounded py-2 flex items-center justify-center gap-2 hover:bg-gray-100"
+        onClick={handleUpdate}
+      >
+        <RefreshCcw size={20}/> Update
+      </button>
+
+      {/* Color + Opacity */}
       <div>
-        <h4 className="font-medium mb-1">Color</h4>
-        <input
-          type="color"
-          value={shape.color || "#ff0000"}
-          onChange={(e) => handleChange("color", e.target.value)}
-          className="w-16 h-8 border"
-        />
+        <h4 className="font-medium mb-2">Color</h4>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={localShape.color || "#ff0000"}
+            onChange={(e) => handleChange("color", e.target.value)}
+            className="w-12 h-8 border"
+          />
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={localShape.opacity ?? 1}
+            onChange={(e) =>
+              handleChange("opacity", parseFloat(e.target.value))
+            }
+          />
+          <span className="text-sm w-10">
+            {Math.round((localShape.opacity ?? 1) * 100)}%
+          </span>
+        </div>
       </div>
 
-      {/* Visibility + Delete */}
-      <div className="flex justify-between mt-4">
-        <button
-          className="px-2 py-1 border rounded"
-          onClick={() => SketchStore.toggleVisibility(shape.id)}
-        >
-          {shape.hidden ? "Show" : "Hide"}
-        </button>
-        <button
-          className="px-2 py-1 border rounded text-red-600"
-          onClick={() => SketchStore.deleteShape(shape.id)}
-        >
-          Delete
-        </button>
-      </div>
+      {/* Actions */}
+      <button
+        className="border rounded py-2 px-20 hover:bg-gray-100 flex items-center gap-2"
+        onClick={() => SketchStore.toggleVisibility(shape.id)}
+      >
+        {shape.hidden ? (
+          <>   <Eye size={18} />
+            
+            Show
+          </>
+        ) : (
+          <>
+           <EyeClosed size={18} />
+            Hide
+          </>
+        )}
+      </button>
+      <button
+        className="border rounded py-2 px-20 hover:bg-red-50 flex items-center gap-2"
+        onClick={() => SketchStore.deleteShape(shape.id)}
+      >
+        <Trash size={18} />
+        Delete
+      </button>
     </div>
   );
 });

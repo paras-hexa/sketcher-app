@@ -63,6 +63,7 @@ export const Toolbar = observer(() => {
             }`}
             onClick={() => uiStore.setActiveTool(tool.key)}
           >
+            
             {tool.icon}
             <span className="text-xs">{tool.label}</span>
           </button>

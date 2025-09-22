@@ -68,27 +68,27 @@ export const SketchCanvas = observer(() => {
     // --- helpers: create / update objects for shapes (from store) ---
     const createThreeObjectForShape = (s) => {
       const color = s.color || "#000000";
-
+      const opacity = s.opacity || 1;
       if (s.type === "line") {
         const pts = [
           new THREE.Vector3(s.x1 || 0, s.y1 || 0, 0),
           new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0),
         ];
         const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color });
+        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
         return new THREE.Line(geom, mat);
       }
 
       if (s.type === "polyline") {
         const pts = (s.points || []).map((p) => new THREE.Vector3(p.x || 0, p.y || 0, 0));
         const geom = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color });
+        const mat = new THREE.LineBasicMaterial({ color, opacity, transparent: true });
         return new THREE.Line(geom, mat);
       }
 
       if (s.type === "circle") {
         const geom = new THREE.CircleGeometry(1, 64);
-        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity });
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(s.cx || 0, s.cy || 0, 0);
         mesh.scale.set(s.r || 0, s.r || 0, 1);
@@ -97,7 +97,7 @@ export const SketchCanvas = observer(() => {
 
       if (s.type === "ellipse") {
         const geom = new THREE.CircleGeometry(1, 64);
-        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity });
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(s.cx || 0, s.cy || 0, 0);
         mesh.scale.set(s.rx || 0, s.ry || 0, 1);
@@ -117,6 +117,8 @@ export const SketchCanvas = observer(() => {
           new THREE.Vector3(s.x2 || 0, s.y2 || 0, 0),
         ]);
         obj.material.color.set(s.color || "#000000");
+        obj.material.opacity = s.opacity ?? 0.2;
+        obj.material.transparent = true;
         return;
       }
 
@@ -124,6 +126,8 @@ export const SketchCanvas = observer(() => {
         const pts = (s.points || []).map((p) => new THREE.Vector3(p.x || 0, p.y || 0, 0));
         obj.geometry.setFromPoints(pts);
         obj.material.color.set(s.color || "#000000");
+        obj.material.opacity = s.opacity ?? 1;
+        obj.material.transparent = true;
         return;
       }
 
@@ -135,6 +139,8 @@ export const SketchCanvas = observer(() => {
           obj.scale.set(s.rx || 0, s.ry || 0, 1);
         }
         obj.material.color.set(s.color || "#000000");
+        obj.material.opacity = s.opacity ?? 1;
+        obj.material.transparent = true;
         return;
       }
     };
@@ -251,12 +257,12 @@ export const SketchCanvas = observer(() => {
         if (tool === "line") {
           const pts = [new THREE.Vector3(x, y, 0), new THREE.Vector3(x, y, 0)];
           const geom = new THREE.BufferGeometry().setFromPoints(pts);
-          const mat = new THREE.LineBasicMaterial({ color: "#000000" });
+          const mat = new THREE.LineBasicMaterial({ color: "#000000", transparent: true, opacity: 1 });
           tempObjectRef.current = new THREE.Line(geom, mat);
           scene.add(tempObjectRef.current);
         } else if (tool === "circle") {
           const geom = new THREE.CircleGeometry(1, 64);
-          const mat = new THREE.MeshBasicMaterial({ color: "#000000", side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+          const mat = new THREE.MeshBasicMaterial({ color: "#000000", side: THREE.DoubleSide, transparent: true, opacity: 1 });
           const mesh = new THREE.Mesh(geom, mat);
           mesh.position.set(x, y, 0);
           mesh.scale.set(0.0001, 0.0001, 1); // tiny to start
@@ -264,7 +270,7 @@ export const SketchCanvas = observer(() => {
           scene.add(tempObjectRef.current);
         } else if (tool === "ellipse") {
           const geom = new THREE.CircleGeometry(1, 64);
-          const mat = new THREE.MeshBasicMaterial({ color: "#000000", side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+          const mat = new THREE.MeshBasicMaterial({ color: "#000000", side: THREE.DoubleSide, transparent: true, opacity: 1 });
           const mesh = new THREE.Mesh(geom, mat);
           mesh.position.set(x, y, 0);
           mesh.scale.set(0.0001, 0.0001, 1);
@@ -293,6 +299,7 @@ export const SketchCanvas = observer(() => {
             x2: x,
             y2: y,
             color: "#000000",
+            opacity: 1
           });
         } else if (currentToolRef.current === "circle") {
           const r = Math.hypot(x - start.x, y - start.y);
@@ -303,6 +310,7 @@ export const SketchCanvas = observer(() => {
             cy: start.y,
             r,
             color: "#000000",
+            opacity: 1
           });
         } else if (currentToolRef.current === "ellipse") {
           const rx = Math.abs(x - start.x);
@@ -315,6 +323,7 @@ export const SketchCanvas = observer(() => {
             rx,
             ry,
             color: "#000000",
+            opacity: 1
           });
         }
 
