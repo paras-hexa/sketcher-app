@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { observer } from "mobx-react-lite";
 import { SketchStore } from "../../stores/sketchstore";
 import {Eye,EyeClosed,Trash,RefreshCcw} from  'lucide-react'
+import { color } from "three/tsl";
 export const PropertiesPanel = observer(() => {
   const shape = SketchStore.selectedShape;
 
@@ -196,31 +197,38 @@ export const PropertiesPanel = observer(() => {
         <RefreshCcw size={20}/> Update
       </button>
 
-      {/* Color + Opacity */}
-      <div>
-        <h4 className="font-medium mb-2">Color</h4>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={localShape.color || "#ff0000"}
-            onChange={(e) => handleChange("color", e.target.value)}
-            className="w-12 h-8 border"
-          />
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={localShape.opacity ?? 1}
-            onChange={(e) =>
-              handleChange("opacity", parseFloat(e.target.value))
-            }
-          />
-          <span className="text-sm w-10">
-            {Math.round((localShape.opacity ?? 1) * 100)}%
-          </span>
-        </div>
-      </div>
+    {/* Color + Opacity */}
+<div>
+  <h4 className="font-medium mb-2">Color</h4>
+  <div className="flex items-center gap-2">
+    <input
+      type="color"
+      value={localShape.color || "#ff0000"}
+      onChange={(e) => {
+        const newColor = e.target.value;
+        setLocalShape((prev) => ({ ...prev, color: newColor }));
+        SketchStore.updateShape(shape.id, { ...localShape, color: newColor }); // ✅ real-time update
+      }}
+      className="w-12 h-8 border"
+    />
+    <input
+      type="range"
+      min="0"
+      max="1"
+      step="0.01"
+      value={localShape.opacity ?? 1}
+      onChange={(e) => {
+        const newOpacity = parseFloat(e.target.value);
+        setLocalShape((prev) => ({ ...prev, opacity: newOpacity }));
+        SketchStore.updateShape(shape.id, { ...localShape, opacity: newOpacity }); // ✅ real-time update
+      }}
+    />
+    <span className="text-sm w-10">
+      {Math.round((localShape.opacity ?? 1) * 100)}%
+    </span>
+  </div>
+</div>
+
 
       {/* Actions */}
       <button

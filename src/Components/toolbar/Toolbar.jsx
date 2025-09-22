@@ -42,7 +42,7 @@ export const Toolbar = observer(() => {
       try {
         const shapes = JSON.parse(e.target.result);
         if (Array.isArray(shapes)) {
-          shapes.forEach((shape) => SketchStore.addShape(shape));
+          shapes.forEach((shape) => SketchStore.addShape({...shape,id:Date.now().toString()+"-"+Math.random()}));
         }
       } catch (err) {
         console.error("Invalid JSON file", err);
@@ -93,6 +93,7 @@ export const Toolbar = observer(() => {
         ref={fileInputRef}
         className="hidden"
         onChange={handleUpload}
+        onClick={(e)=>{e.target.value=""}}
       />
     </div>
   );

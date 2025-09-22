@@ -199,9 +199,10 @@ export const SketchCanvas = observer(() => {
       raycaster.setFromCamera(mouseNDC, camera);
       const allObjects = Array.from(objectsRef.current.values());
       const intersects = raycaster.intersectObjects(allObjects, true);
-
+     console.log("raycats",intersects);
+     
       if (intersects.length > 0 && !isDrawingRef.current && !polylineModeRef.current) {
-        const hit = intersects[0].object;
+        const hit = intersects[intersects.length-1].object;
         const id = hit.userData && hit.userData.id;
         if (id) {
           SketchStore.selectShape(id);
